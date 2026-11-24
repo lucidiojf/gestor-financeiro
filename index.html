@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Meu gestor financeiro</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --green: #16a34a;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --border: #e5e7eb;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding-bottom: 84px; }
+
+    /* Tabs superiores */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: #e5e7eb;
+      padding: 4px;
+      margin: 12px;
+      border-radius: 10px;
+      gap: 4px;
+    }
+    .tab-btn {
+      border: none;
+      background: transparent;
+      padding: 8px 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--card);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Resumo principal */
+    .summary {
+      text-align: center;
+      padding: 12px 16px 18px;
+    }
+    .summary-label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .summary-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--green);
+    }
+    .summary-value.negative { color: var(--red); }
+
+    /* Cards de resumo dos cartões */
+    .card-pills {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 0 12px 14px;
+    }
+    .pill {
+      background: var(--card);
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .pill-title { font-size: 12px; color: var(--muted); }
+    .pill-val { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 2px; }
+
+    /* Lista de lançamentos */
+    .list {
+      background: var(--card);
+      margin: 0 12px;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .item:last-child { border-bottom: none; }
+    .item-left { display: flex; align-items: center; gap: 12px; }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+    }
+    .dot.pos { background: var(--green); }
+    .dot.card { background: var(--blue); }
+    .item-title { font-size: 15px; font-weight: 600; color: var(--text); }
+    .item-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .item-right { text-align: right; }
+    .item-val { font-size: 15px; font-weight: 700; color: var(--text); }
+    .item-val.pos { color: var(--green); }
+    .item-bal { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Botão fixo inferior */
+    .footer-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 12px;
+      background: var(--bg);
+    }
+    .btn-primary {
+      width: 100%;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      cursor: pointer;
+    }
+
+    /* Modal de adição */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      align-items: flex-end;
+      z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--card);
+      width: 100%;
+      border-radius: 18px 18px 0 0;
+      padding: 20px 16px 28px;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+    }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hidden { display: none; }
+    .loading { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="tabs">
+    <button class="tab-btn" data-tab="month">Month</button>
+    <button class="tab-btn" data-tab="day">Day</button>
+    <button class="tab-btn active" data-tab="history">History</button>
+    <button class="tab-btn" data-tab="cards">Cartões</button>
+  </div>
+
+  <div class="summary">
+    <div class="summary-label" id="summaryLabel">Histórico Completo</div>
+    <div class="summary-value" id="summaryValue">R$ 0,00</div>
+  </div>
+
+  <div id="cardsSummary" class="card-pills hidden">
+    <div class="pill">
+      <div class="pill-title">Visa 2110</div>
+      <div class="pill-val" id="total2110">R$ 0,00</div>
+    </div>
+    <div class="pill">
+      <div class="pill-title">Cartão 8250</div>
+      <div class="pill-val" id="total8250">R$ 0,00</div>
+    </div>
+  </div>
+
+  <div id="listContainer" class="list">
+    <div class="loading">Carregando dados das planilhas...</div>
+  </div>
+
+  <div class="footer-bar">
+    <button class="btn-primary" onclick="abrirModal()">ADD TRANSACTION</button>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <strong>Novo Lançamento</strong>
+        <button onclick="fecharModal()" style="border:none;background:none;font-size:18px;cursor:pointer;">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label>Destino</label>
+        <select id="destinoSelect" onchange="alternarCampos()">
+          <option value="conta">Conta / Caixa (Finanças Bot)</option>
+          <option value="cartao">Cartão de Crédito</option>
+        </select>
+      </div>
+
+      <div class="row-2">
+        <div class="form-group">
+          <label>Data</label>
+          <input type="date" id="inpData" />
+        </div>
+        <div class="form-group">
+          <label>Valor (R$)</label>
+          <input type="number" step="0.01" id="inpValor" placeholder="0,00" />
+        </div>
+      </div>
+
+      <!-- Campos Conta -->
+      <div id="camposConta">
+        <div class="row-2">
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="inpTipo">
+              <option value="Despesa">Despesa</option>
+              <option value="Receita">Receita / Saldo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <input type="text" id="inpCategoria" placeholder="Ex: Geral, Seguro..." value="Geral" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descrição</label>
+          <input type="text" id="inpDescricao" placeholder="Ex: Tx bancária" />
+        </div>
+      </div>
+
+      <!-- Campos Cartão -->
+      <div id="camposCartao" class="hidden">
+        <div class="row-2">
+          <div class="form-group">
+            <label>Título da despesa</label>
+            <input type="text" id="inpTituloCartao" placeholder="Ex: Compras" />
+          </div>
+          <div class="form-group">
+            <label>Local Compra</label>
+            <input type="text" id="inpLocal" placeholder="Ex: Alexandria" />
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label>Cartão Final</label>
+            <select id="inpCartaoFinal">
+              <option value="Visa 2110">Visa 2110</option>
+              <option value="Final 8250">Final 8250</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Bandeira</label>
+            <input type="text" id="inpBandeira" value="Riachuelo" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Dt Vencimento</label>
+          <input type="text" id="inpVencimento" value="Riachuelo 15" />
+        </div>
+      </div>
+
+      <button class="btn-primary" id="btnSalvar" onclick="salvarLancamento()">SALVAR</button>
+    </div>
+  </div>
+
+  <script>
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbw6v257Kj9vmnw_sisYFSXFAtK9S3Z7WdMjd7NQm2YAps2qujywoX2KsX2WeuQf6rdFxw/exec';
+
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    }
+
+    let state = {
+      tab: 'history',
+      transacoes: [],
+      cartoes: []
+    };
+
+    const fmtMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const fmtNum = (v) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.tab = btn.dataset.tab;
+        render();
+      });
+    });
+
+    async function carregarDados() {
+      try {
+        const res = await fetch(GAS_URL);
+        const json = await res.json();
+        if (json.status === 'ok') {
+          state.transacoes = json.transacoes;
+          state.cartoes = json.cartoes;
+          render();
+        }
+      } catch (e) {
+        document.getElementById('listContainer').innerHTML =
+          '<div class="loading">Erro ao conectar com o Google Apps Script. Verifique a URL.</div>';
+      }
+    }
+
+    function render() {
+      const listEl = document.getElementById('listContainer');
+      const labelEl = document.getElementById('summaryLabel');
+      const valEl = document.getElementById('summaryValue');
+      const cardsBox = document.getElementById('cardsSummary');
+
+      if (state.tab === 'cards') {
+        cardsBox.classList.remove('hidden');
+        labelEl.textContent = 'Total Faturas Cartões';
+
+        const sum2110 = state.cartoes.reduce((acc, c) => acc + c.valor2110, 0);
+        const sum8250 = state.cartoes.reduce((acc, c) => acc + c.valor8250, 0);
+        const totalGeral = sum2110 + sum8250;
+
+        document.getElementById('total2110').textContent = fmtMoeda(sum2110);
+        document.getElementById('total8250').textContent = fmtMoeda(sum8250);
+        valEl.textContent = fmtMoeda(totalGeral);
+        valEl.classList.add('negative');
+
+        if (!state.cartoes.length) {
+          listEl.innerHTML = '<div class="loading">Nenhum lançamento de cartão encontrado.</div>';
+          return;
+        }
+
+        const listaInvertida = [...state.cartoes].reverse();
+        listEl.innerHTML = listaInvertida.map(c => `
+          <div class="item">
+            <div class="item-left">
+              <div class="dot card"></div>
+              <div>
+                <div class="item-title">${c.titulo} — ${c.local}</div>
+                <div class="item-sub">${c.cartao} • ${c.vencimento} • ${c.data}</div>
+              </div>
+            </div>
+            <div class="item-right">
+              <div class="item-val">-${fmtNum(c.valor)}</div>
+              <div class="item-bal">${c.bandeira}</div>
+            </div>
+          </div>
+        `).join('');
+        return;
+      }
+
+      // Abas Month, Day, History
+      cardsBox.classList.add('hidden');
+      valEl.classList.remove('negative');
+
+      // Calcula saldo acumulado na ordem cronológica da planilha
+      let saldoAcumulado = 0;
+      const comSaldo = state.transacoes.map(t => {
+        saldoAcumulado += t.valor;
+        return { ...t, saldoApos: saldoAcumulado };
+      });
+
+      const hoje = new Date().toISOString().slice(0, 10);
+      const mesAtual = hoje.slice(0, 7);
+
+      let filtradas = comSaldo;
+      if (state.tab === 'month') {
+        labelEl.textContent = 'Saldo do Mês';
+        filtradas = comSaldo.filter(t => t.data.startsWith(mesAtual));
+      } else if (state.tab === 'day') {
+        labelEl.textContent = 'Movimento de Hoje';
+        filtradas = comSaldo.filter(t => t.data === hoje);
+      } else {
+        labelEl.textContent = 'Histórico Completo';
+      }
+
+      const totalExibido = filtradas.reduce((acc, t) => acc + t.valor, 0);
+      valEl.textContent = fmtMoeda(state.tab === 'history' ? saldoAcumulado : totalExibido);
+      if ((state.tab === 'history' ? saldoAcumulado : totalExibido) < 0) {
+        valEl.classList.add('negative');
+      }
+
+      // Exibe do mais recente para o mais antigo (igual ao seu print)
+      const exibicao = [...filtradas].reverse();
+
+      if (!exibicao.length) {
+        listEl.innerHTML = '<div class="loading">Sem lançamentos neste período.</div>';
+        return;
+      }
+
+      listEl.innerHTML = exibicao.map(t => {
+        const isPos = t.valor >= 0;
+        const sinal = isPos ? '+' : '';
+        return `
+          <div class="item">
+            <div class="item-left">
+              <div class="dot ${isPos ? 'pos' : ''}"></div>
+              <div>
+                <div class="item-title">${t.descricao}</div>
+                <div class="item-sub">${t.categoria || 'Geral'} • ${t.data}</div>
+              </div>
+            </div>
+            <div class="item-right">
+              <div class="item-val ${isPos ? 'pos' : ''}">${sinal}${fmtNum(t.valor)}</div>
+              <div class="item-bal">Saldo: ${fmtMoeda(t.saldoApos)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function abrirModal() {
+      document.getElementById('inpData').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('modalBackdrop').classList.add('open');
+    }
+
+    function fecharModal() {
+      document.getElementById('modalBackdrop').classList.remove('open');
+    }
+
+    function alternarCampos() {
+      const isCartao = document.getElementById('destinoSelect').value === 'cartao';
+      document.getElementById('camposCartao').classList.toggle('hidden', !isCartao);
+      document.getElementById('camposConta').classList.toggle('hidden', isCartao);
+    }
+
+    async function salvarLancamento() {
+      const btn = document.getElementById('btnSalvar');
+      btn.disabled = true;
+      btn.textContent = 'SALVANDO...';
+
+      const destino = document.getElementById('destinoSelect').value;
+      const payload = {
+        destino,
+        data: document.getElementById('inpData').value,
+        valor: document.getElementById('inpValor').value
+      };
+
+      if (destino === 'cartao') {
+        payload.titulo = document.getElementById('inpTituloCartao').value;
+        payload.local = document.getElementById('inpLocal').value;
+        payload.cartao = document.getElementById('inpCartaoFinal').value;
+        payload.bandeira = document.getElementById('inpBandeira').value;
+        payload.vencimento = document.getElementById('inpVencimento').value;
+      } else {
+        payload.tipo = document.getElementById('inpTipo').value;
+        payload.categoria = document.getElementById('inpCategoria').value;
+        payload.descricao = document.getElementById('inpDescricao').value;
+      }
+
+      try {
+        await fetch(GAS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        fecharModal();
+        setTimeout(carregarDados, 1200);
+      } catch (e) {
+        alert('Erro ao salvar lançamento.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'SALVAR';
+      }
+    }
+
+    carregarDados();
+  </script>
+</body>
+</html>
